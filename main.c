@@ -5,12 +5,13 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 #define SECOND 1
 #define SAMPLING_HZ 44100
 #define BUFFER_LENGTH (SECOND * SAMPLING_HZ)
-#define SOUND_HZ 440
+#define STARTING_NOTE_HZ 55.0
 
 #define NOTES 128
 
@@ -43,7 +44,6 @@ int handle_input(int code, int press) {
   return 0;
 }
 
-// TODO: terminate loop if escape pressed: XRecordDisableContext
 void key_pressed_cb(XPointer arg, XRecordInterceptData *d) {
   if (d->category != XRecordFromServer)
     return;
@@ -58,18 +58,16 @@ void key_pressed_cb(XPointer arg, XRecordInterceptData *d) {
 
     switch (type) {
     case KeyPress:
-      if (key == 1) {
-        // TODO: don't exit here, but clean up properly
-        exit(0);
-        // FIXME: why does XRecordDisableContext never return
-        // https://www.x.org/releases/X11R7.7/doc/libXtst/recordlib.html#XRecordDisableContext
-        // https://gitlab.freedesktop.org/xorg/lib/libxtst/-/issues/1
-        // https://stackoverflow.com/a/69717395/5552584
-        XRecordDisableContext(dpy, rc);
-        XSync(dpy, false);
-        XFlush(dpy);
-        return;
-      }
+      // if (key == 1) {
+      //   // FIXME: why does XRecordDisableContext never return
+      //   // https://www.x.org/releases/X11R7.7/doc/libXtst/recordlib.html#XRecordDisableContext
+      //   // https://gitlab.freedesktop.org/xorg/lib/libxtst/-/issues/1
+      //   // https://stackoverflow.com/a/69717395/5552584
+      //   XRecordDisableContext(dpy, rc);
+      //   XSync(dpy, false);
+      //   XFlush(dpy);
+      //   return;
+      // }
       handle_input(key, 1);
       break;
     case KeyRelease:
@@ -146,7 +144,7 @@ int main() {
   for (int note = 0; note < NOTES; note++) {
     // Generate sine wave data
     for (int i = 0; i < BUFFER_LENGTH; ++i) {
-      double freq = 55.0 * pow(a, (double)note);
+      double freq = STARTING_NOTE_HZ * pow(a, (double)note);
       data[i * 2] = sin(2 * M_PI * freq * i / BUFFER_LENGTH) * SHRT_MAX;
       data[i * 2 + 1] =
           -1 * sin(2 * M_PI * freq * i / BUFFER_LENGTH) * SHRT_MAX; // antiphase
