@@ -8,12 +8,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+// FIXME: it's hard to nop everything with i3 (need a line per modifier combination), so use x11's grab feature
 #define SECOND 1
 #define SAMPLING_HZ 44100
 #define BUFFER_LENGTH (SECOND * SAMPLING_HZ)
-#define STARTING_NOTE_HZ 55.0
+#define STARTING_NOTE_HZ 110.0
 
-#define NOTES 128
+#define NOTES 0xff
 
 static ALuint buf[512] = {0};
 static ALuint src[512] = {0};
@@ -34,6 +35,14 @@ int handle_input(int code, int press) {
     stack[stack_pointer] = code;
     alSourcePlay(src[stack[stack_pointer]]);
   } else {
+    // if the key was currently pressed, bubble it up the stack and remove it
+    for (int i = 0; i < stack_pointer; i++) {
+      if (stack[i] == code) {
+        stack[i] = stack[i + 1];
+        stack[i + 1] = code;
+      }
+    }
+
     alSourceStop(src[stack[stack_pointer]]);
     stack_pointer--;
     if (stack_pointer >= 0) {
