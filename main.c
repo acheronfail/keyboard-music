@@ -3,12 +3,14 @@
 #include <X11/XKBlib.h>
 #include <X11/extensions/record.h>
 #include <limits.h>
+#define __USE_GNU
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 // FIXME: it's hard to nop everything with i3 (need a line per modifier combination), so use x11's grab feature
+// FIXME: crackling/feedback twice every second
 #define SECOND 1
 #define SAMPLING_HZ 44100
 #define BUFFER_LENGTH (SECOND * SAMPLING_HZ)
@@ -168,9 +170,7 @@ int main() {
     alSourcei(src[note], AL_LOOPING, AL_TRUE);
   }
 
-  printf("before\n");
   watch_input();
-  printf("after\n");
 
   for (int note = 0; note < NOTES; note++) {
     alDeleteSources(1, &src[note]);
