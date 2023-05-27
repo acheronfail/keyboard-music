@@ -156,9 +156,9 @@ int main() {
     // Generate sine wave data
     for (int i = 0; i < BUFFER_LENGTH; ++i) {
       double freq = STARTING_NOTE_HZ * pow(a, (double)note);
-      data[i * 2] = sin(2 * M_PI * freq * i / BUFFER_LENGTH) * SHRT_MAX;
+      data[i * 2] = sin(2 * M_PIf * freq * i / BUFFER_LENGTH) * SHRT_MAX;
       data[i * 2 + 1] =
-          -1 * sin(2 * M_PI * freq * i / BUFFER_LENGTH) * SHRT_MAX; // antiphase
+          -1 * sin(2 * M_PIf * freq * i / BUFFER_LENGTH) * SHRT_MAX; // antiphase
     }
 
     // Output looping sine wave
