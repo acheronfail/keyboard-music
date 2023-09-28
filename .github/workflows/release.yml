@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+      - automate-release
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: keyboard-music.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary: keyboard-music
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: keyboard-music
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: keyboard-music
+
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ALSA libraries (Ubuntu only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Install Rust
+        run: rustup show && rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target=${{ matrix.target }}
+
+      - name: Archive
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          else
+            zip "${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifacts
+          path: ${{ matrix.target }}.zip
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: .
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/x86_64-pc-windows-msvc.zip
+            artifacts/x86_64-apple-darwin.zip
+            artifacts/aarch64-apple-darwin.zip
+            artifacts/x86_64-unknown-linux-gnu.zip
+          tag_name: ${{ github.run_number }}
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
