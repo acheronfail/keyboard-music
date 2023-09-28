@@ -29,9 +29,10 @@ pub fn generate_maps(args: &Args) -> Result<(KeyToNote, NoteToKey)> {
     Ok((key_to_note, note_to_key))
 }
 
-#[derive(Debug, Copy, Clone, ValueEnum)]
+#[derive(Debug, Default, Copy, Clone, ValueEnum)]
 pub enum KeyMaps {
     Us,
+    #[default]
     Piano,
 }
 

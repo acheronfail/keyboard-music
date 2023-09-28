@@ -28,8 +28,8 @@ const FREQ_FACTOR: f32 = BASE_NOTE_FREQ * TAU;
 
 #[derive(Debug, Parser)]
 pub struct Args {
-    /// Path to a JSON file describing the keymap
-    #[clap(short = 'k', long = "keymap")]
+    /// Which keymap to use
+    #[clap(short = 'k', long = "keymap", value_enum, default_value_t = KeyMaps::default())]
     pub keymap: KeyMaps,
 }
 
