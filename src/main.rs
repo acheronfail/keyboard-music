@@ -1,17 +1,20 @@
+#![recursion_limit = "256"]
+
+mod keymaps;
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::f32::consts::PI;
-use std::fs::OpenOptions;
-use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use clap::Parser;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use device_query::{DeviceQuery, DeviceState, Keycode};
+use device_query::{DeviceQuery, DeviceState};
+use keymaps::KeyMaps;
 
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub type MidiNote = u8;
+pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// Max audio volume used when generating the audio data
 const MAX_VOLUME: f32 = 0.5;
@@ -24,34 +27,10 @@ const TAU: f32 = 2.0 * PI;
 const FREQ_FACTOR: f32 = BASE_NOTE_FREQ * TAU;
 
 #[derive(Debug, Parser)]
-struct Args {
+pub struct Args {
     /// Path to a JSON file describing the keymap
     #[clap(short = 'k', long = "keymap")]
-    pub keymap: PathBuf,
-}
-
-type MidiNote = u8;
-type KeyToNote = Vec<Option<MidiNote>>;
-type NoteToKey = Vec<Vec<MidiNote>>;
-
-fn generate_maps(args: &Args) -> Result<(KeyToNote, NoteToKey)> {
-    let file = OpenOptions::new().read(true).open(&args.keymap)?;
-    let keymap: HashMap<String, Option<MidiNote>> = serde_hjson::from_reader(file)?;
-
-    let mut key_to_note = vec![None; MidiNote::MAX as usize];
-    for (keycode_str, note) in keymap {
-        let keycode = Keycode::from_str(&keycode_str)?;
-        key_to_note[keycode as usize] = note;
-    }
-
-    let mut note_to_key = vec![vec![]; MidiNote::MAX as usize];
-    for (keycode, note) in key_to_note.iter().enumerate() {
-        if let Some(note) = note {
-            note_to_key[*note as usize].push(keycode as MidiNote);
-        }
-    }
-
-    Ok((key_to_note, note_to_key))
+    pub keymap: KeyMaps,
 }
 
 fn main() -> Result<()> {
@@ -63,7 +42,7 @@ fn main() -> Result<()> {
     let active_keys = Arc::new(Mutex::new(Vec::<MidiNote>::new()));
 
     // read user keymap
-    let (key_to_note, note_to_key) = generate_maps(&args)?;
+    let (key_to_note, note_to_key) = keymaps::generate_maps(&args)?;
 
     // audio setup
     let host = cpal::default_host();
