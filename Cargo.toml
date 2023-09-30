@@ -5,12 +5,29 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+visualiser = [
+  "dep:gl",
+  "dep:glutin",
+  "dep:glutin-winit",
+  "dep:oneshot",
+  "dep:raw-window-handle",
+  "dep:winit",
+]
+
 [dependencies]
+anyhow = "1.0.75"
 clap = { version = "4.4.5", features = ["derive"] }
 cpal = "0.15.2"
 device_query = "1.1.3"
+gl = { version = "0.14.0", optional = true }
+glutin = { version = "0.30", optional = true }
+glutin-winit = { version = "0.3.0", optional = true }
+oneshot = { version = "0.1.6", optional = true }
+raw-window-handle = { version = "0.5.2", optional = true }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
+winit = { version = "0.28.7", optional = true }
 
 [profile.release]
 # Reducing binary size, see https://github.com/johnthagen/min-sized-rust

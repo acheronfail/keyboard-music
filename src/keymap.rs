@@ -1,21 +1,22 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use anyhow::{anyhow, Result};
 use clap::ValueEnum;
 use device_query::Keycode;
 use serde_json::{json, Value};
 
-use crate::{Args, MidiNote, Result};
+use crate::MidiNote;
 
 pub type KeyToNote = Vec<Option<MidiNote>>;
 pub type NoteToKey = Vec<Vec<MidiNote>>;
 
-pub fn generate_maps(args: &Args) -> Result<(KeyToNote, NoteToKey)> {
-    let keymap: HashMap<String, Option<MidiNote>> = serde_json::from_value(args.keymap.get_map())?;
+pub fn generate_maps(keymap: &KeyMap) -> Result<(KeyToNote, NoteToKey)> {
+    let keymap: HashMap<String, Option<MidiNote>> = serde_json::from_value(keymap.get_map())?;
 
     let mut key_to_note = vec![None; MidiNote::MAX as usize];
     for (keycode_str, note) in keymap {
-        let keycode = Keycode::from_str(&keycode_str)?;
+        let keycode = Keycode::from_str(&keycode_str).map_err(|e| anyhow!(e))?;
         key_to_note[keycode as usize] = note;
     }
 
@@ -30,16 +31,16 @@ pub fn generate_maps(args: &Args) -> Result<(KeyToNote, NoteToKey)> {
 }
 
 #[derive(Debug, Default, Copy, Clone, ValueEnum)]
-pub enum KeyMaps {
+pub enum KeyMap {
     Us,
     #[default]
     Piano,
 }
 
-impl KeyMaps {
+impl KeyMap {
     fn get_map(&self) -> Value {
         match self {
-            KeyMaps::Us => json!({
+            KeyMap::Us => json!({
               "Escape": 45,
               "F1": 46,
               "F2": 47,
@@ -119,7 +120,7 @@ impl KeyMaps {
               "Down": 121,
               "Right": 122
             }),
-            KeyMaps::Piano => json!({
+            KeyMap::Piano => json!({
               "Q": 48,
               "Key2": 49,
               "W": 50,
