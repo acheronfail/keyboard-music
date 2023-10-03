@@ -15,7 +15,8 @@ const TAU: f32 = 2.0 * PI;
 /// Used to calculate the pitch for a given note
 const FREQ_FACTOR: f32 = BASE_NOTE_FREQ * TAU;
 /// Used to calculate semi-tones between notes
-const PITCH_FACTOR: f32 = 1.0594630943592953; // 2_f32.powf(1.0 / 12.0)
+/// This is the value of `2_f32.powf(1.0 / 12.0)`.
+const PITCH_FACTOR: f32 = 1.0594630943592953;
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
 pub enum Wave {

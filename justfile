@@ -23,3 +23,6 @@ rrunv *args:
 test:
   cargo test
   cargo test --features visualiser
+
+install:
+  cargo install --all-features --path .

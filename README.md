@@ -1,6 +1,8 @@
 # Keyboard Music
 
-A dumb little thing I made for when my kids interrupt me at work!>
+A dumb little thing I made for when my kids interrupt me at work!
+
+Let's you use your keyboard to play music.
 
 ## Usage
 
