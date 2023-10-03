@@ -16,7 +16,7 @@ pub struct Phase {
 impl Phase {
     #[inline]
     fn note_idx(&self, rel_midi_note: i8) -> usize {
-        (rel_midi_note + i8::MAX) as usize
+        rel_midi_note as usize + i8::MAX as usize
     }
 }
 
