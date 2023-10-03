@@ -1,12 +1,12 @@
 #version 330 core
 
 out vec4 color;
-uniform bool rendering_wave;
+uniform bool is_drawing_pause_icon;
 
 void main() {
-    if (rendering_wave) {
-        color = vec4(1.0, 1.0, 1.0, 1.0);
-    } else {
+    if (is_drawing_pause_icon) {
         color = vec4(1.0, 0.0, 0.0, 1.0);
+    } else {
+        color = vec4(1.0, 1.0, 1.0, 1.0);
     }
 }
