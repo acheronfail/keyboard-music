@@ -11,14 +11,14 @@ default:
 fmt:
   rustup run nightly cargo fmt
 
-run:
-  cargo run
-runv:
-  cargo run --features visualiser -- --vis
-rrun:
-  cargo run --release
-rrunv:
-  cargo run --release --features visualiser -- --vis
+run *args:
+  cargo run -- {{args}}
+runv *args:
+  cargo run --features visualiser -- --vis {{args}}
+rrun *args:
+  cargo run --release -- {{args}}
+rrunv *args:
+  cargo run --release --features visualiser -- --vis {{args}}
 
 test:
   cargo test

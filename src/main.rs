@@ -5,6 +5,7 @@ mod notes;
 mod stream;
 #[cfg(feature = "visualiser")]
 mod vis;
+mod wave;
 
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,7 @@ use device_query::{DeviceQuery, DeviceState};
 use keymap::KeyMap;
 use notes::Notes;
 use stream::StreamWrapper;
+use wave::Wave;
 
 pub type MidiNote = u8;
 
@@ -36,6 +38,10 @@ pub struct Args {
     #[cfg(feature = "visualiser")]
     #[clap(short = 'v', long = "vis")]
     pub show_visualiser: bool,
+
+    /// Choose which type of wave to play
+    #[clap(short = 'w', long = "wave", value_enum, default_value_t = Wave::default())]
+    pub wave: Wave,
 }
 
 fn main() -> Result<()> {
@@ -78,7 +84,7 @@ fn audio_loop(args: Args, tx: Option<Sender<Vec<f32>>>) -> Result<()> {
         &config.into(),
         {
             // this is a map of (relative midi note -> (note phase position, note volume))
-            let mut notes = Notes::new(&args.keymap, sample_rate)?;
+            let mut notes = Notes::new(&args.keymap, args.wave.generator(sample_rate))?;
             let active_keys = active_keys.clone();
             move |buf: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 // this buffer isn't zeroed on all platforms
