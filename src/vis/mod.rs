@@ -7,7 +7,11 @@ use std::thread;
 
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext, Version,
+    ContextApi,
+    ContextAttributesBuilder,
+    NotCurrentContext,
+    PossiblyCurrentContext,
+    Version,
 };
 use glutin::display::{Display, GetGlDisplay};
 use glutin::prelude::*;
