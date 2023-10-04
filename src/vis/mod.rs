@@ -7,11 +7,7 @@ use std::thread;
 
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{
-    ContextApi,
-    ContextAttributesBuilder,
-    NotCurrentContext,
-    PossiblyCurrentContext,
-    Version,
+    ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext, Version,
 };
 use glutin::display::{Display, GetGlDisplay};
 use glutin::prelude::*;
@@ -19,7 +15,7 @@ use glutin::surface::{Surface, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
 use raw_window_handle::HasRawWindowHandle;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
+use winit::event::{ElementState, Event, MouseScrollDelta, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::window::{Window, WindowBuilder};
 
@@ -29,7 +25,9 @@ const WINDOW_Y: i32 = 50;
 const WINDOW_WIDTH: i32 = 1600;
 const WINDOW_HEIGHT: i32 = 300;
 
-const VIS_BUFFER_SIZE: usize = 10_000;
+const VIS_BUFFER_MIN: f32 = 100.0;
+const VIS_BUFFER_MAX: f32 = 30_000.0;
+const VIS_BUFFER_DEFAULT: usize = 10_000;
 
 /// Mostly all taken from:
 /// https://github.com/rust-windowing/glutin/blob/master/glutin_examples/src/lib.rs
@@ -118,9 +116,28 @@ fn prepare_gl_window() -> (
     )
 }
 
-// TODO: make this window pausable and scrollable to be able to inspect it? or slow mo?
+pub struct VisualiserState {
+    gl_context: Option<PossiblyCurrentContext>,
+
+    paused: bool,
+    vis_buffer_size: Arc<Mutex<usize>>,
+}
+
+impl VisualiserState {
+    fn toggle_pause(&mut self) {
+        self.paused = !self.paused;
+    }
+}
+
 pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
-    let audio_data = Arc::new(Mutex::new(VecDeque::with_capacity(VIS_BUFFER_SIZE)));
+    let audio_data = Arc::new(Mutex::new(VecDeque::with_capacity(VIS_BUFFER_DEFAULT)));
+    let vis_buffer_size = Arc::new(Mutex::new(VIS_BUFFER_DEFAULT));
+
+    let mut state = VisualiserState {
+        gl_context: None,
+        paused: false,
+        vis_buffer_size: vis_buffer_size.clone(),
+    };
 
     // thread which receives audio data from audio thread and copies it so we can render it
     let (win_tx, win_rx) = oneshot::channel::<Window>();
@@ -131,7 +148,7 @@ pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
             while let Ok(audio_buf) = audio_rx.recv() {
                 let mut vec = audio_data.lock().unwrap();
                 vec.extend(audio_buf);
-                while vec.len() > VIS_BUFFER_SIZE {
+                while vec.len() > usize::max(1, *vis_buffer_size.lock().unwrap()) {
                     vec.pop_front();
                 }
 
@@ -147,7 +164,6 @@ pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
     win_tx.send(window).unwrap();
 
     // surrender this thread to the window's event loop and run have it take over
-    let mut state: Option<(PossiblyCurrentContext, bool)> = None;
     let mut gl_program = None;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -157,19 +173,28 @@ pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::MouseWheel { delta, .. } => {
-                    // TODO: scroll audio or something? (requires we keep track of a "view" of a larger data set)
-                    dbg!(delta);
+                    let (_, y) = match delta {
+                        MouseScrollDelta::LineDelta(x, y) => (x, y),
+                        MouseScrollDelta::PixelDelta(p) => (p.x as f32, p.y as f32),
+                    };
+
+                    let base = 1.03_f32.ln();
+                    let mut g = state.vis_buffer_size.lock().unwrap();
+                    let x = *g as f32;
+                    *g = if y > 0.0 {
+                        (x + (x.ln() / base)).min(VIS_BUFFER_MAX) as usize
+                    } else {
+                        (x - (x.ln() / base)).max(VIS_BUFFER_MIN) as usize
+                    };
                 }
                 WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                     // close and exit when escape is pressed
                     Some(VirtualKeyCode::Escape) => *control_flow = ControlFlow::Exit,
                     // pause waveform render when space is pressed
                     Some(VirtualKeyCode::Space) if input.state == ElementState::Pressed => {
-                        state = match state.take() {
-                            Some((x, paused)) => Some((x, !paused)),
-                            None => None,
-                        };
+                        state.toggle_pause()
                     }
+
                     _ => {}
                 },
                 _ => (),
@@ -182,17 +207,17 @@ pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
                     .unwrap();
 
                 gl_program = Some(renderer::Renderer::new(&gl_display, audio_data.clone()));
-                state = Some((gl_context, false));
+                state.gl_context = Some(gl_context);
             }
             Event::Suspended => {
-                let (gl_context, ..) = state.take().unwrap();
+                let gl_context = state.gl_context.take().unwrap();
                 assert!(not_current_gl_context
                     .replace(gl_context.make_not_current().unwrap())
                     .is_none());
             }
-            Event::RedrawRequested(_) => match (&state, &mut gl_program) {
-                (Some((ref gl_context, paused, ..)), Some(gl_program)) => {
-                    gl_program.draw(*paused);
+            Event::RedrawRequested(_) => match (&state.gl_context, &mut gl_program) {
+                (Some(gl_context), Some(gl_program)) => {
+                    gl_program.draw(&state);
                     gl_surface.swap_buffers(&gl_context).unwrap();
                 }
                 _ => {}

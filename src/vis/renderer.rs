@@ -3,10 +3,13 @@ use std::ffi::CString;
 use std::mem::size_of;
 use std::sync::{Arc, Mutex};
 
+use gl::types::*;
 use glutin::display::Display;
 use glutin::prelude::*;
 
-use crate::notes::MAX_VOLUME;
+use crate::notes::{lerp, MAX_VOLUME};
+
+use super::{VisualiserState, VIS_BUFFER_MAX, VIS_BUFFER_MIN};
 
 /// Small helper to create (and set defaults) for uniforms
 enum UniformDefault {
@@ -34,14 +37,15 @@ pub struct Renderer {
     audio_data_len: f32,
 
     u_audio_data_len: i32,
-    u_is_drawing_pause_icon: i32,
+    u_is_drawing_wave: i32,
 
     // (vao, vbo)
     vao_wave: (u32, u32),
+    vao_zoom: (u32, u32),
     // (vao, count)
     vao_pause_icon: (u32, i32),
 
-    vertices: Vec<f32>,
+    wave_vertices: Vec<f32>,
 }
 
 impl Renderer {
@@ -88,15 +92,40 @@ impl Renderer {
              */
 
             let vao_wave = {
-                let mut vao: gl::types::GLuint = 0;
+                let mut vao: GLuint = 0;
                 gl::GenVertexArrays(1, &mut vao);
                 gl::BindVertexArray(vao);
 
-                let mut vbo: gl::types::GLuint = 0;
+                let mut vbo: GLuint = 0;
                 gl::GenBuffers(1, &mut vbo);
                 gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
                 gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, 0, std::ptr::null());
                 gl::EnableVertexAttribArray(0);
+
+                (vao, vbo)
+            };
+
+            /*
+             * Setup VAO for rendering zoom indicator
+             */
+
+            let vao_zoom = {
+                let mut vao = 0;
+                gl::GenVertexArrays(1, &mut vao);
+                gl::BindVertexArray(vao);
+
+                let mut vbo = 0;
+                gl::GenBuffers(1, &mut vbo);
+                gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+                gl::EnableVertexAttribArray(0);
+                gl::VertexAttribPointer(
+                    0,
+                    2,
+                    gl::FLOAT,
+                    gl::FALSE,
+                    (2 * size_of::<GLfloat>()) as GLint,
+                    std::ptr::null(),
+                );
 
                 (vao, vbo)
             };
@@ -138,8 +167,8 @@ impl Renderer {
                 gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
                 gl::BufferData(
                     gl::ARRAY_BUFFER,
-                    (vertices.len() * size_of::<gl::types::GLfloat>()) as gl::types::GLsizeiptr,
-                    &vertices[0] as *const f32 as *const gl::types::GLvoid,
+                    (vertices.len() * size_of::<GLfloat>()) as GLsizeiptr,
+                    &vertices[0] as *const f32 as *const GLvoid,
                     gl::STATIC_DRAW,
                 );
 
@@ -149,8 +178,8 @@ impl Renderer {
                 gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
                 gl::BufferData(
                     gl::ELEMENT_ARRAY_BUFFER,
-                    (indices.len() * size_of::<gl::types::GLuint>()) as gl::types::GLsizeiptr,
-                    &indices[0] as *const u32 as *const gl::types::GLvoid,
+                    (indices.len() * size_of::<GLuint>()) as GLsizeiptr,
+                    &indices[0] as *const u32 as *const GLvoid,
                     gl::STATIC_DRAW,
                 );
 
@@ -160,7 +189,7 @@ impl Renderer {
                     3,
                     gl::FLOAT,
                     gl::FALSE,
-                    3 * size_of::<gl::types::GLfloat>() as gl::types::GLsizei,
+                    3 * size_of::<GLfloat>() as GLsizei,
                     std::ptr::null(),
                 );
                 gl::EnableVertexAttribArray(0);
@@ -172,38 +201,37 @@ impl Renderer {
             UniformDefault::F32(MAX_VOLUME).create(shader_program, "audio_max_volume");
             let u_audio_data_len =
                 UniformDefault::F32(0.0).create(shader_program, "audio_data_len");
-            let u_is_drawing_pause_icon =
-                UniformDefault::Int(0).create(shader_program, "is_drawing_pause_icon");
+            let u_is_drawing_wave =
+                UniformDefault::Int(1).create(shader_program, "is_drawing_wave");
 
             Renderer {
                 audio_data,
                 audio_data_len: 0.0,
 
                 u_audio_data_len,
-                u_is_drawing_pause_icon,
+                u_is_drawing_wave,
 
                 vao_wave,
+                vao_zoom,
                 vao_pause_icon,
 
-                vertices: vec![0.0],
+                wave_vertices: vec![0.0],
             }
         }
     }
 
-    pub fn draw(&mut self, paused: bool) {
+    pub fn draw(&mut self, state: &VisualiserState) {
         unsafe {
-            // Set the clearing color to black (R=0, G=0, B=0) with full opacity (A=1.0)
             gl::ClearColor(0.0, 0.0, 0.0, 1.0);
-            // Clear the color buffer with the set color
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
-            if paused {
+            if state.paused {
                 self.render_pause_icon();
             } else {
                 // fetch and prepare audio data to be sent to gl
                 let audio_data = self.audio_data.lock().unwrap();
                 self.audio_data_len = audio_data.len() as f32;
-                self.vertices = audio_data
+                self.wave_vertices = audio_data
                     .iter()
                     .enumerate()
                     // we send the index and the audio value (y) over to the shader
@@ -212,32 +240,53 @@ impl Renderer {
             };
 
             self.render_wave();
+            self.render_zoom_indicator();
+        }
+    }
+
+    fn render_zoom_indicator(&self) {
+        unsafe {
+            // pairs of (x, y) coords
+            let y = -0.95;
+            let t = 1.0 - ((self.audio_data_len + VIS_BUFFER_MIN) / VIS_BUFFER_MAX);
+            let points: Vec<GLfloat> = vec![lerp(-0.95, 0.0, t), y, lerp(0.95, -0.1, t), y];
+
+            let (vao, vbo) = self.vao_zoom;
+            gl::BindVertexArray(vao);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (points.len() * size_of::<GLfloat>()) as GLsizeiptr,
+                &points[0] as *const f32 as *const GLvoid,
+                gl::STATIC_DRAW,
+            );
+            gl::DrawArrays(gl::LINE_STRIP, 0, points.len() as i32 / 2);
         }
     }
 
     fn render_wave(&self) {
         unsafe {
             let (vao, vbo) = self.vao_wave;
+            gl::Uniform1i(self.u_is_drawing_wave, 1);
             gl::Uniform1f(self.u_audio_data_len, self.audio_data_len);
             gl::BindVertexArray(vao);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(
                 gl::ARRAY_BUFFER,
-                (self.vertices.len() * size_of::<f32>()) as gl::types::GLsizeiptr,
-                &self.vertices[0] as *const f32 as *const gl::types::GLvoid,
+                (self.wave_vertices.len() * size_of::<f32>()) as GLsizeiptr,
+                &self.wave_vertices[0] as *const f32 as *const GLvoid,
                 gl::STATIC_DRAW,
             );
-            gl::DrawArrays(gl::LINE_STRIP, 0, self.vertices.len() as i32 / 2);
+            gl::DrawArrays(gl::LINE_STRIP, 0, self.wave_vertices.len() as i32 / 2);
+            gl::Uniform1i(self.u_is_drawing_wave, 0);
         }
     }
 
     fn render_pause_icon(&self) {
         unsafe {
             let (vao, count) = self.vao_pause_icon;
-            gl::Uniform1i(self.u_is_drawing_pause_icon, 1);
             gl::BindVertexArray(vao);
             gl::DrawElements(gl::TRIANGLES, count, gl::UNSIGNED_INT, std::ptr::null());
-            gl::Uniform1i(self.u_is_drawing_pause_icon, 0);
         }
     }
 }
