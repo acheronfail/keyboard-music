@@ -248,7 +248,7 @@ impl Renderer {
         unsafe {
             // pairs of (x, y) coords
             let y = -0.95;
-            let t = 1.0 - ((self.audio_data_len + VIS_BUFFER_MIN) / VIS_BUFFER_MAX);
+            let t = 1.0 - ((self.audio_data_len - VIS_BUFFER_MIN) / VIS_BUFFER_MAX);
             let points: Vec<GLfloat> = vec![lerp(-0.95, 0.0, t), y, lerp(0.95, -0.1, t), y];
 
             let (vao, vbo) = self.vao_zoom;
