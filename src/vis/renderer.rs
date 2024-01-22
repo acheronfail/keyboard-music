@@ -7,9 +7,8 @@ use gl::types::*;
 use glutin::display::Display;
 use glutin::prelude::*;
 
-use crate::notes::{lerp, MAX_VOLUME};
-
 use super::{VisualiserState, VIS_BUFFER_MAX, VIS_BUFFER_MIN};
+use crate::notes::{lerp, MAX_VOLUME};
 
 /// Small helper to create (and set defaults) for uniforms
 enum UniformDefault {

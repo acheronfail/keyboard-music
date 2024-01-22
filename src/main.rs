@@ -7,7 +7,7 @@ mod stream;
 mod vis;
 mod wave;
 
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -21,6 +21,11 @@ use stream::StreamWrapper;
 use wave::Wave;
 
 pub type MidiNote = u8;
+
+#[derive(Debug, Copy, Clone)]
+pub enum Action {
+    NextWave,
+}
 
 /// If no keys are pressed for this amount of time, the stream will stop playing
 /// to reduce resource usage (it will resume when keys are pressed again)
@@ -49,25 +54,35 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "visualiser")]
     {
+        use std::sync::mpsc;
+
         if args.show_visualiser {
-            let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
+            let (audio_tx, audio_rx) = mpsc::channel();
+            let (option_tx, option_rx) = mpsc::channel();
             std::thread::spawn(move || {
-                if let Err(e) = audio_loop(args, Some(tx)) {
+                if let Err(e) = audio_loop(args, Some(audio_tx), Some(option_rx)) {
                     panic!("{}", e);
                 }
             });
 
-            vis::open_and_run(rx);
+            vis::open_and_run(audio_rx, option_tx);
         }
     }
 
-    audio_loop(args, None)?;
+    audio_loop(args, None, None)?;
     Ok(())
 }
 
-fn audio_loop(args: Args, tx: Option<Sender<Vec<f32>>>) -> Result<()> {
+fn audio_loop(
+    args: Args,
+    audio_tx: Option<Sender<Vec<f32>>>,
+    option_rx: Option<Receiver<Action>>,
+) -> Result<()> {
     #[cfg(not(feature = "visualiser"))]
-    drop(tx);
+    {
+        drop(audio_tx);
+        drop(option_rx);
+    }
 
     // audio setup
     let host = cpal::default_host();
@@ -79,12 +94,17 @@ fn audio_loop(args: Args, tx: Option<Sender<Vec<f32>>>) -> Result<()> {
 
     // shared data (audio thread + keyboard thread) of which keycodes are currently active
     let active_keys = Arc::new(Mutex::new(Vec::<MidiNote>::new()));
+    let notes = Arc::new(Mutex::new(Notes::new(
+        &args.keymap,
+        args.wave,
+        sample_rate,
+    )?));
+
     // create audio stream and start playing it immediately
     let mut stream = StreamWrapper::new(device.build_output_stream(
         &config.into(),
         {
-            // this is a map of (relative midi note -> (note phase position, note volume))
-            let mut notes = Notes::new(&args.keymap, args.wave.generator(sample_rate))?;
+            let notes = notes.clone();
             let active_keys = active_keys.clone();
             move |buf: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 // this buffer isn't zeroed on all platforms
@@ -92,14 +112,18 @@ fn audio_loop(args: Args, tx: Option<Sender<Vec<f32>>>) -> Result<()> {
 
                 // check shared mutex to update key state
                 {
-                    notes.update_keys(&*active_keys.lock().unwrap());
-                }
+                    let mut notes = notes.lock().unwrap();
 
-                notes.generate_audio(buf);
+                    {
+                        notes.update_keys(&*active_keys.lock().unwrap());
+                    }
+
+                    notes.generate_audio(buf);
+                }
 
                 // send a copy of the audio buffer over to the visualiser
                 #[cfg(feature = "visualiser")]
-                if let Some(ref tx) = tx {
+                if let Some(ref tx) = audio_tx {
                     let _ = tx.send(buf.to_vec());
                 }
             }
@@ -130,6 +154,15 @@ fn audio_loop(args: Args, tx: Option<Sender<Vec<f32>>>) -> Result<()> {
             let mut active_keys = active_keys.lock().unwrap();
             active_keys.drain(..);
             active_keys.extend(keys.iter().map(|k| *k as MidiNote));
+        }
+
+        #[cfg(feature = "visualiser")]
+        if let Some(rx) = &option_rx {
+            if let Ok(opt) = rx.try_recv() {
+                match opt {
+                    Action::NextWave => notes.lock().unwrap().update_wave(),
+                }
+            }
         }
 
         std::thread::sleep(KEYPRESS_INTERVAL);

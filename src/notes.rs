@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 
 use crate::keymap::{self, KeyMap, KeyToNote, NoteToKey};
-use crate::wave::WaveGenerator;
+use crate::wave::{Wave, WaveGenerator};
 
 /// Max audio volume used when generating the audio data
 pub const MAX_VOLUME: f32 = 0.5;
@@ -13,23 +13,33 @@ pub const BASE_NOTE_FREQ: f32 = 440.0;
 const MIDI_OFFSET: i8 = 69;
 
 pub struct Notes {
+    sample_rate: f32,
     notes: HashMap<i8, NoteState>,
 
     note_to_key: NoteToKey,
     key_to_note: KeyToNote,
 
-    wave: Box<dyn WaveGenerator>,
+    wave: Wave,
+    wave_generator: Box<dyn WaveGenerator>,
 }
 
 impl Notes {
-    pub fn new(keymap: &KeyMap, wave: Box<dyn WaveGenerator>) -> Result<Notes> {
+    pub fn new(keymap: &KeyMap, wave: Wave, sample_rate: f32) -> Result<Notes> {
         let (key_to_note, note_to_key) = keymap::generate_maps(keymap)?;
         Ok(Notes {
+            sample_rate,
             notes: HashMap::new(),
             note_to_key,
             key_to_note,
             wave,
+            wave_generator: wave.generator(sample_rate),
         })
+    }
+
+    #[allow(unused)]
+    pub fn update_wave(&mut self) {
+        self.wave = self.wave.next();
+        self.wave_generator = self.wave.generator(self.sample_rate);
     }
 
     pub fn update_keys(&mut self, active_keys: &[u8]) {
@@ -45,7 +55,7 @@ impl Notes {
             // tell the wave to drop its state for any active notes it's keeping track of
             let should_keep = state.active || state.volume > 0.0;
             if !should_keep {
-                self.wave.clear(*rel_midi_note);
+                self.wave_generator.clear(*rel_midi_note);
             }
 
             should_keep
@@ -70,13 +80,13 @@ impl Notes {
 
             // update audio buffer with this note's wave
             let buf_len = buf.len() as f32;
-            self.wave.before(*rel_midi_note);
+            self.wave_generator.before(*rel_midi_note);
             for (idx, sample) in buf.iter_mut().enumerate() {
                 let idx = idx as f32;
-                let wave = self.wave.next(idx);
+                let wave = self.wave_generator.next(idx);
                 *sample += wave * note_state.get_volume(idx / buf_len, target_volume)
             }
-            self.wave.after(buf_len);
+            self.wave_generator.after(buf_len);
 
             // set the note to its target volume
             note_state.set_volume(target_volume);

@@ -28,12 +28,21 @@ pub enum Wave {
 }
 
 impl Wave {
-    pub fn generator(&self, sample_rate: f32) -> Box<dyn WaveGenerator> {
+    pub fn generator(self, sample_rate: f32) -> Box<dyn WaveGenerator> {
         match self {
             Wave::Sine => Box::new(sine::Sine::new(sample_rate)),
             Wave::Square => Box::new(square::Square::new(sample_rate)),
             Wave::Triangle => Box::new(triangle::Triangle::new(sample_rate)),
             Wave::Sawtooth => Box::new(sawtooth::Sawtooth::new(sample_rate)),
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Wave::Sine => Wave::Square,
+            Wave::Square => Wave::Triangle,
+            Wave::Triangle => Wave::Sawtooth,
+            Wave::Sawtooth => Wave::Sine,
         }
     }
 }

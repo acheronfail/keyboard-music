@@ -1,13 +1,17 @@
 mod renderer;
 
 use std::collections::VecDeque;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{
-    ContextApi, ContextAttributesBuilder, NotCurrentContext, PossiblyCurrentContext, Version,
+    ContextApi,
+    ContextAttributesBuilder,
+    NotCurrentContext,
+    PossiblyCurrentContext,
+    Version,
 };
 use glutin::display::{Display, GetGlDisplay};
 use glutin::prelude::*;
@@ -15,9 +19,18 @@ use glutin::surface::{Surface, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
 use raw_window_handle::HasRawWindowHandle;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, Event, MouseScrollDelta, VirtualKeyCode, WindowEvent};
+use winit::event::{
+    ElementState,
+    Event,
+    MouseButton,
+    MouseScrollDelta,
+    VirtualKeyCode,
+    WindowEvent,
+};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::window::{Window, WindowBuilder};
+
+use crate::Action;
 
 const WINDOW_TITLE: &str = "keyboard-music";
 const WINDOW_X: i32 = 635;
@@ -129,7 +142,7 @@ impl VisualiserState {
     }
 }
 
-pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
+pub fn open_and_run(audio_rx: Receiver<Vec<f32>>, wave_tx: Sender<Action>) -> ! {
     let audio_data = Arc::new(Mutex::new(VecDeque::with_capacity(VIS_BUFFER_DEFAULT)));
     let vis_buffer_size = Arc::new(Mutex::new(VIS_BUFFER_DEFAULT));
 
@@ -172,6 +185,11 @@ pub fn open_and_run(audio_rx: Receiver<Vec<f32>>) -> ! {
             Event::LoopDestroyed => return,
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::MouseInput { state, button, .. }
+                    if button == MouseButton::Left && state == ElementState::Pressed =>
+                {
+                    let _ = wave_tx.send(Action::NextWave);
+                }
                 WindowEvent::MouseWheel { delta, .. } => {
                     let (_, y) = match delta {
                         MouseScrollDelta::LineDelta(x, y) => (x, y),
