@@ -236,6 +236,10 @@ impl Renderer {
                     // we send the index and the audio value (y) over to the shader
                     .flat_map(|(idx, y)| vec![idx as f32, *y])
                     .collect();
+
+                if self.wave_vertices.is_empty() {
+                    self.wave_vertices.push(0.0);
+                }
             };
 
             self.render_wave();
